@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>מה הקשר?</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --tile: #f1f1f1;
+      --tile-selected: #c9daf6;
+      --text: #242424;
+      --muted: #8b8b8b;
+      --border: #dddddd;
+      --success: #dcefd8;
+      --danger: #f4d8d8;
+      --button: #f3f3f3;
+      --shadow: 0 2px 8px rgba(0,0,0,.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Arial, "Noto Sans Hebrew", sans-serif;
+      min-height: 100vh;
+    }
+
+    .app {
+      width: min(920px, 100%);
+      margin: 0 auto;
+      padding: 28px 18px 40px;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      text-align: center;
+      font-size: clamp(28px, 5vw, 46px);
+    }
+
+    .subtitle {
+      text-align: center;
+      color: #555;
+      margin-bottom: 28px;
+      font-size: clamp(16px, 2.5vw, 22px);
+    }
+
+    .solved-groups {
+      display: grid;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .solved-card {
+      border-radius: 14px;
+      padding: 18px;
+      text-align: center;
+      background: var(--success);
+      box-shadow: var(--shadow);
+    }
+
+    .solved-card strong {
+      display: block;
+      font-size: 20px;
+      margin-bottom: 6px;
+    }
+
+    .solved-card span {
+      font-size: 17px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    .tile {
+      min-height: 124px;
+      border: 0;
+      border-radius: 12px;
+      background: var(--tile);
+      color: var(--text);
+      font-size: clamp(18px, 3vw, 28px);
+      font-weight: 700;
+      padding: 12px;
+      cursor: pointer;
+      transition: transform .12s ease, background .12s ease;
+      box-shadow: var(--shadow);
+      word-break: break-word;
+    }
+
+    .tile:hover { transform: translateY(-1px); }
+    .tile.selected { background: var(--tile-selected); }
+    .tile.hint { outline: 4px solid #f0c84b; }
+
+    .message {
+      min-height: 44px;
+      margin: 16px auto 6px;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .controls {
+      display: flex;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .control {
+      border: 1px solid var(--border);
+      background: var(--button);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 13px 20px;
+      font-size: 17px;
+      cursor: pointer;
+    }
+
+    .control:disabled {
+      opacity: .4;
+      cursor: not-allowed;
+    }
+
+    .attempts {
+      margin-top: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      flex-wrap: wrap;
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    .dots {
+      display: flex;
+      gap: 8px;
+      direction: ltr;
+    }
+
+    .dot {
+      width: 24px;
+      height: 24px;
+      border: 2px solid #222;
+      border-radius: 50%;
+      background: white;
+    }
+
+    .dot.used {
+      background: #222;
+    }
+
+    .end-panel {
+      display: none;
+      margin-top: 22px;
+      padding: 22px;
+      border-radius: 14px;
+      text-align: center;
+      font-size: 21px;
+      font-weight: 700;
+      box-shadow: var(--shadow);
+    }
+
+    .end-panel.win { display: block; background: var(--success); }
+    .end-panel.lose { display: block; background: var(--danger); }
+
+    @media (max-width: 650px) {
+      .app { padding: 22px 10px 28px; }
+      .grid { gap: 8px; }
+      .tile {
+        min-height: 98px;
+        border-radius: 9px;
+        padding: 8px 5px;
+      }
+      .control { padding: 11px 15px; font-size: 15px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <h1>מה הקשר?</h1>
+    <div class="subtitle">חברו ארבע קבוצות של ארבע</div>
+
+    <section id="solvedGroups" class="solved-groups"></section>
+    <section id="grid" class="grid" aria-label="לוח המשחק"></section>
+
+    <div id="message" class="message" aria-live="polite"></div>
+
+    <div class="controls">
+      <button id="hintBtn" class="control">רמז</button>
+      <button id="shuffleBtn" class="control">ערבוב</button>
+      <button id="clearBtn" class="control">ניקוי בחירה</button>
+      <button id="submitBtn" class="control" disabled>אישור</button>
+    </div>
+
+    <div class="attempts">
+      <span>ניסיונות:</span>
+      <div id="dots" class="dots"></div>
+    </div>
+
+    <div id="endPanel" class="end-panel"></div>
+  </main>
+
+  <script>
+    const MAX_ATTEMPTS = 6;
+
+    const groups = [
+      {
+        title: "סמלים של הפועל בעבר",
+        words: ["סלים", "שלום", "ג׳ימי", "משה"]
+      },
+      {
+        title: "מילה אחרונה בשיר של אריק איינשטיין",
+        words: ["מצחך", "לאט", "גוזל", "8"]
+      },
+      {
+        title: "איבר עם שייכות בגוף שני",
+        words: ["ראשך", "ידך", "רגלך", "אוזנך"]
+      },
+      {
+        title: "המילה האחרונה בספרים מפורסמים שלפניה ו׳ החיבור",
+        words: ["עונשו", "דעה קדומה", "רגישות", "געגוע"]
+      }
+    ];
+
+    const hintWords = ["מצחך", "לאט"];
+
+    let remainingWords = groups.flatMap(group => group.words);
+    let selected = [];
+    let solved = [];
+    let mistakes = 0;
+    let gameOver = false;
+    let hintUsed = false;
+
+    const grid = document.getElementById("grid");
+    const solvedGroups = document.getElementById("solvedGroups");
+    const message = document.getElementById("message");
+    const dots = document.getElementById("dots");
+    const endPanel = document.getElementById("endPanel");
+    const hintBtn = document.getElementById("hintBtn");
+    const shuffleBtn = document.getElementById("shuffleBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const submitBtn = document.getElementById("submitBtn");
+
+    function shuffleArray(array) {
+      const copy = [...array];
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    }
+
+    function render() {
+      grid.innerHTML = "";
+      remainingWords.forEach(word => {
+        const button = document.createElement("button");
+        button.className = "tile";
+        button.textContent = word;
+
+        if (selected.includes(word)) button.classList.add("selected");
+        if (hintUsed && hintWords.includes(word)) button.classList.add("hint");
+
+        button.addEventListener("click", () => toggleWord(word));
+        grid.appendChild(button);
+      });
+
+      solvedGroups.innerHTML = "";
+      solved.forEach(group => {
+        const card = document.createElement("div");
+        card.className = "solved-card";
+        card.innerHTML = `<strong>${group.title}</strong><span>${group.words.join(" · ")}</span>`;
+        solvedGroups.appendChild(card);
+      });
+
+      dots.innerHTML = "";
+      for (let i = 0; i < MAX_ATTEMPTS; i++) {
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        if (i < mistakes) dot.classList.add("used");
+        dots.appendChild(dot);
+      }
+
+      submitBtn.disabled = selected.length !== 4 || gameOver;
+      clearBtn.disabled = selected.length === 0 || gameOver;
+      shuffleBtn.disabled = gameOver;
+      hintBtn.disabled = hintUsed || gameOver;
+    }
+
+    function toggleWord(word) {
+      if (gameOver) return;
+
+      if (selected.includes(word)) {
+        selected = selected.filter(item => item !== word);
+      } else if (selected.length < 4) {
+        selected.push(word);
+      }
+      message.textContent = "";
+      render();
+    }
+
+    function submitSelection() {
+      if (selected.length !== 4 || gameOver) return;
+
+      const matchingGroup = groups.find(group =>
+        !solved.includes(group) &&
+        group.words.every(word => selected.includes(word))
+      );
+
+      if (matchingGroup) {
+        solved.push(matchingGroup);
+        remainingWords = remainingWords.filter(word => !matchingGroup.words.includes(word));
+        selected = [];
+        message.textContent = "נכון!";
+        hintUsed = false;
+
+        if (solved.length === groups.length) {
+          finishGame(true);
+        }
+      } else {
+        mistakes++;
+        const closeGroup = groups.find(group =>
+          !solved.includes(group) &&
+          group.words.filter(word => selected.includes(word)).length === 3
+        );
+
+        message.textContent = closeGroup ? "קרוב מאוד — חסרה מילה אחת." : "לא הקבוצה הנכונה.";
+        selected = [];
+
+        if (mistakes >= MAX_ATTEMPTS) {
+          finishGame(false);
+        }
+      }
+      render();
+    }
+
+    function finishGame(won) {
+      gameOver = true;
+      endPanel.className = `end-panel ${won ? "win" : "lose"}`;
+      endPanel.textContent = won
+        ? "כל הכבוד! מצאת את כל ארבע הקבוצות."
+        : "נגמרו הניסיונות. אפשר לרענן את העמוד ולנסות שוב.";
+
+      if (!won) {
+        groups
+          .filter(group => !solved.includes(group))
+          .forEach(group => solved.push(group));
+        remainingWords = [];
+      }
+    }
+
+    hintBtn.addEventListener("click", () => {
+      hintUsed = true;
+      selected = hintWords.filter(word => remainingWords.includes(word));
+      message.textContent = "שתי המילים המסומנות שייכות לאותה קבוצה.";
+      render();
+    });
+
+    shuffleBtn.addEventListener("click", () => {
+      remainingWords = shuffleArray(remainingWords);
+      selected = [];
+      message.textContent = "";
+      render();
+    });
+
+    clearBtn.addEventListener("click", () => {
+      selected = [];
+      message.textContent = "";
+      render();
+    });
+
+    submitBtn.addEventListener("click", submitSelection);
+
+    remainingWords = shuffleArray(remainingWords);
+    render();
+  </script>
+</body>
+</html>
